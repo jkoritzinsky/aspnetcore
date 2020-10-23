@@ -2,8 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -93,15 +93,31 @@ namespace Microsoft.DotNet.Watcher
                     currentRunCancellationSource.Token))
                 using (var fileSetWatcher = new FileSetWatcher(fileSet, _reporter))
                 {
-                    var fileSetTask = fileSetWatcher.GetChangedFileAsync(combinedCancellationSource.Token);
                     var processTask = _processRunner.RunAsync(processSpec, combinedCancellationSource.Token);
-
                     var args = ArgumentEscaper.EscapeAndConcatenate(processSpec.Arguments);
                     _reporter.Verbose($"Running {processSpec.ShortDisplayName()} with the following arguments: {args}");
 
                     _reporter.Output("Started");
 
-                    var finishedTask = await Task.WhenAny(processTask, fileSetTask, cancelledTaskSource.Task);
+                    var waitForFileChanges = true;
+                    Task<FileItem> fileSetTask;
+                    Task finishedTask;
+                    do
+                    {
+                        fileSetTask = fileSetWatcher.GetChangedFileAsync(combinedCancellationSource.Token);
+                        finishedTask = await Task.WhenAny(processTask, fileSetTask, cancelledTaskSource.Task);
+
+                        if (finishedTask == fileSetTask &&
+                            fileSetTask.Result is FileItem file &&
+                            file.FileKind == FileKind.StaticFile &&
+                            context.BrowserRefreshServer is not null)
+                        {
+                            await StaticContentHandler.TryHandleFileAction(context.BrowserRefreshServer, file, combinedCancellationSource.Token);
+                            continue;
+                        }
+
+                        waitForFileChanges = false;
+                    } while (waitForFileChanges);
 
                     // Regardless of the which task finished first, make sure everything is cancelled
                     // and wait for dotnet to exit. We don't want orphan processes
@@ -125,7 +141,6 @@ namespace Microsoft.DotNet.Watcher
                         return;
                     }
 
-                    context.ChangedFile = fileSetTask.Result;
                     if (finishedTask == processTask)
                     {
                         // Process exited. Redo evaludation
@@ -133,10 +148,12 @@ namespace Microsoft.DotNet.Watcher
                         // Now wait for a file to change before restarting process
                         context.ChangedFile = await fileSetWatcher.GetChangedFileAsync(cancellationToken, () => _reporter.Warn("Waiting for a file to change before restarting dotnet..."));
                     }
-
-                    if (!string.IsNullOrEmpty(fileSetTask.Result))
+                    else
                     {
-                        _reporter.Output($"File changed: {fileSetTask.Result}");
+                        Debug.Assert(finishedTask == fileSetTask);
+                        var changedFile = fileSetTask.Result;
+                        context.ChangedFile = changedFile;
+                        _reporter.Output($"File changed: {changedFile.FilePath}");
                     }
                 }
             }
@@ -144,7 +161,7 @@ namespace Microsoft.DotNet.Watcher
 
         public async ValueTask DisposeAsync()
         {
-            foreach (var filter in _filters)
+           foreach (var filter in _filters)
             {
                 if (filter is IAsyncDisposable asyncDisposable)
                 {

@@ -51,7 +51,7 @@ namespace Microsoft.DotNet.Watcher.Internal
             _buildFlags = InitializeArgs(FindTargetsFile(), trace);
         }
 
-        public async Task<IFileSet> CreateAsync(CancellationToken cancellationToken)
+        public async Task<FileSet> CreateAsync(CancellationToken cancellationToken)
         {
             var watchList = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
             try
@@ -86,23 +86,42 @@ namespace Microsoft.DotNet.Watcher.Internal
                     if (exitCode == 0 && File.Exists(watchList))
                     {
                         var lines = File.ReadAllLines(watchList);
-                        var isNetCoreApp31OrNewer = lines.FirstOrDefault() == "true";
 
-                        var fileset = new FileSet(
-                            isNetCoreApp31OrNewer,
-                            lines.Skip(1)
-                                .Select(l => l?.Trim())
-                                .Where(l => !string.IsNullOrEmpty(l)));
+                        var staticFiles = new List<string>();
+                        var commandLine = new CommandLineApplication();
+                        var contentFiles = commandLine.Option("-c", "Content file", CommandOptionType.MultipleValue);
+                        var contentFilePaths = commandLine.Option("-s", "Static asset path", CommandOptionType.MultipleValue);
+                        var files = commandLine.Option("-f", "Watched files", CommandOptionType.MultipleValue);
+                        var isNetCoreApp31 = commandLine.Option("-isnetcoreapp31", "Is .NET Core 3.1 or newer?", CommandOptionType.NoValue);
+                        commandLine.Invoke = () => 0;
+
+                        commandLine.Execute(lines);
+                        var isNetCoreApp31OrNewer = isNetCoreApp31.Value();
+                        var fileItems = new List<FileItem>();
+                        foreach (var file in files.Values)
+                        {
+                            fileItems.Add(new FileItem(file));
+                        }
+
+                        for (var i = 0; i < contentFiles.Values.Count; i++)
+                        {
+                            var contentFile = contentFiles.Values[i];
+                            var staticWebAssetPath = contentFilePaths.Values[i];
+
+                            fileItems.Add(new FileItem(contentFile, FileKind.StaticFile, staticWebAssetPath));
+                        }
+
+                        var fileset = new FileSet(isNetCoreApp31.HasValue(), fileItems);
 
                         _reporter.Verbose($"Watching {fileset.Count} file(s) for changes");
 #if DEBUG
 
                         foreach (var file in fileset)
                         {
-                            _reporter.Verbose($"  -> {file}");
+                            _reporter.Verbose($"  -> {file.FilePath} {file.FileKind}.");
                         }
 
-                        Debug.Assert(fileset.All(Path.IsPathRooted), "All files should be rooted paths");
+                        Debug.Assert(fileset.All(f => Path.IsPathRooted(f.FilePath)), "All files should be rooted paths");
 #endif
 
                         return fileset;
@@ -128,7 +147,7 @@ namespace Microsoft.DotNet.Watcher.Internal
                     {
                         _reporter.Warn("Fix the error to continue or press Ctrl+C to exit.");
 
-                        var fileSet = new FileSet(false, new[] { _projectFile });
+                        var fileSet = new FileSet(false, new[] { new FileItem(_projectFile) });
 
                         using (var watcher = new FileSetWatcher(fileSet, _reporter))
                         {
