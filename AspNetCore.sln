@@ -1553,7 +1553,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Microsoft.AspNetCore.Signal
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "testassets", "testassets", "{BB3D6EDD-AE71-4D25-B61B-7EBF7A1BA1D1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RazorSourceGenerators", "src\Razor\Microsoft.NET.Sdk.Razor\sourcegen\RazorSourceGenerators.csproj", "{1822B2E7-2B15-44DA-BD6C-CF3DF66F3E36}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RazorSourceGenerators", "src\Razor\SourceGenerator\src\RazorSourceGenerators.csproj", "{1822B2E7-2B15-44DA-BD6C-CF3DF66F3E36}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
