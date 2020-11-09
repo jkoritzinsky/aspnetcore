@@ -162,6 +162,7 @@ Copyright (c) .NET Foundation. All rights reserved.
          ResponseFiles="$(CompilerResponseFile)"
          RuntimeMetadataVersion="$(RuntimeMetadataVersion)"
          SharedCompilationId="$(SharedCompilationId)"
+         SkipAnalyzers="true"
          SkipCompilerExecution="$(SkipCompilerExecution)"
          Sources="@(RazorCompile)"
          SubsystemVersion="$(SubsystemVersion)"
